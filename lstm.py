@@ -61,7 +61,7 @@ def train_model(dataloader, epoch_count, vocab_size, glove_emb, device):
     avg_losses_f = []
 
     for epoch in range(epoch_count):
-        print("Epoch: ", epoch)
+        print("Epoch: ", epoch + 1)
         start_time = time.time()
         model.train()
         loss_fn = torch.nn.CrossEntropyLoss()
@@ -110,7 +110,7 @@ def sample(preds, temperature=1.0):
 
 def test(model, idx2word, word2idx, seq_length, device):
     model.eval()
-    sentence = ["my", "mom", "said", "to", "never", "\n", "look", "a", "gift", "horse", "in", "the", "mouth", "\n", "gang", "gang"]
+    sentence = ["highlights", "\n", "tell", "my", "baby", "i'm", "back", "in", "town", "\n", "highlights", "\n", "tell", "everybody", "i'm", "back"]
     generated = []
     original = sentence
     window = sentence
