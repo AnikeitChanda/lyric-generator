@@ -36,13 +36,12 @@ def make_dataloaders(DP_text, seq_length, step, word2idx, b_size):
 
 
 class Simple_LSTM(nn.Module):
-    def __init__(self, vocab_size, hidden_dim, embedding_dim, dropout = 0.2):
+    def __init__(self, vocab_size, hidden_dim, glove_emb_weights, dropout = 0.2):
         super(Simple_LSTM, self).__init__()
         
         self.hidden_dim = hidden_dim
-        self.embedding_dim = embedding_dim
-        self.lstm = nn.LSTM(embedding_dim, hidden_dim,dropout = dropout,num_layers = 2)
-        self.embeddings = nn.Embedding(vocab_size, embedding_dim)
+        self.embeddings = nn.Embedding.from_pretrained(glove_emb_weights, freeze = False)
+        self.lstm = nn.LSTM(glove_emb_weights.shape[1], hidden_dim,dropout = dropout,num_layers = 2)
         self.fc = nn.Linear(hidden_dim, vocab_size)
     
     def forward(self, seq_in):
@@ -54,9 +53,9 @@ class Simple_LSTM(nn.Module):
         out = self.fc(ht)
         return out
 
-def train_model(dataloader, epoch_count, vocab_size):
+def train_model(dataloader, epoch_count, vocab_size, glove_emb, device):
     #Change embedding dim and hidden dim
-    model = Simple_LSTM(vocab_size,256,50)
+    model = Simple_LSTM(vocab_size,256,glove_emb).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr = 0.002)
     
     avg_losses_f = []
@@ -68,6 +67,8 @@ def train_model(dataloader, epoch_count, vocab_size):
         loss_fn = torch.nn.CrossEntropyLoss()
         avg_loss = 0.
         for i, (x_batch, y_batch) in enumerate(dataloader):
+            x_batch = x_batch.to(device)
+            y_batch = y_batch.to(device)
             y_pred = model(x_batch)
 
             loss = loss_fn(y_pred, y_batch)
@@ -76,6 +77,8 @@ def train_model(dataloader, epoch_count, vocab_size):
         
             optimizer.step()
             avg_loss+= loss.item()/len(dataloader)
+            if i % 1000 == 0:
+                print(avg_loss)
 
         elapsed_time = time.time() - start_time 
         print('Epoch {}/{} \t loss={:.4f} \t time={:.2f}s'.format(
@@ -105,9 +108,9 @@ def sample(preds, temperature=1.0):
     return np.argmax(probas)
 
 
-def test(model, idx2word, word2idx, seq_length):
+def test(model, idx2word, word2idx, seq_length, device):
     model.eval()
-    sentence = ["i", "i", "i", "i", "and", "i", "\n", "i", "i", "i", "\n", "i", "and", "\n", "i", "i"]
+    sentence = ["my", "mom", "said", "to", "never", "\n", "look", "a", "gift", "horse", "in", "the", "mouth", "\n", "gang", "gang"]
     generated = []
     original = sentence
     window = sentence
@@ -118,8 +121,9 @@ def test(model, idx2word, word2idx, seq_length):
             x[0, t] = word2idx[word] # Change the sentence to index vector shape (1,50)
         
         x_in = Variable(torch.LongTensor(x))
+        x_in = x_in.to(device)
         pred = model(x_in)
-        pred = np.array(F.softmax(pred, dim=1).data[0])
+        pred = np.array(F.softmax(pred, dim=1).data[0].cpu())
         next_index = sample(pred, variance)
         next_word = idx2word[next_index] # index to word
 

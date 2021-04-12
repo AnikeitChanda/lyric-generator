@@ -4,6 +4,66 @@ import numpy as np
 from langdetect import detect
 import nltk
 import re
+from os import path
+import pickle
+
+#Get glove embeddings
+def get_glove():
+
+    num_words = 0
+    with open('glove.6B.300d.txt', 'rb') as f:
+        for l in f:
+            num_words += 1
+
+    glove_emb = torch.empty(num_words, 300, dtype=torch.float)
+    word2idx = {}
+    idx2word = {}
+    with open('glove.6B.300d.txt', 'rb') as f:
+        for i, l in enumerate(f):
+            line = l.decode().split()
+            word = line[0]
+            vect = torch.Tensor([float(j) for j in line[1:]])
+            glove_emb[i,:] = vect
+            word2idx[word] = i
+            idx2word[i] = word
+    return glove_emb, word2idx, idx2word
+
+def get_better_embeddings(tokens):
+    if path.exists('glove_embeddings.pt'):
+        embeddings = torch.load('glove_embeddings.pt')
+        with open("newWord2idx.pkl", 'rb') as word2idxF:
+            word2idx = pickle.load(word2idxF)
+        with open("newidx2word.pkl", 'rb') as idx2wordF:
+            idx2word = pickle.load(idx2wordF)
+        return embeddings, word2idx, idx2word
+    
+    glove_emb, word2idx, idx2word = get_glove()
+
+    newWord2idx = {}
+    newidx2Word = []
+    vocabCount = 0
+    for word in set(tokens):
+        newWord2idx[word] = vocabCount
+        newidx2Word.append(word)
+        vocabCount += 1
+
+    embeddings =  torch.empty(vocabCount, glove_emb.shape[1], dtype=torch.float)
+    for word, index in newWord2idx.items():
+        if word in word2idx:
+            vect = glove_emb[word2idx[word]]
+        else:
+            vect = torch.randn(glove_emb.shape[1])
+            pass
+        embeddings[index] = vect
+
+    torch.save(embeddings, 'glove_embeddings.pt')
+    with open('newWord2idx.pkl', 'wb') as word2idxpickle:
+        pickle.dump(newWord2idx, word2idxpickle)
+    
+    with open('newidx2word.pkl', 'wb') as idx2wordpickle:
+        pickle.dump(newidx2Word, idx2wordpickle)
+
+    return embeddings, newWord2idx, newidx2Word
 
 def language_detector(string):
     try:
