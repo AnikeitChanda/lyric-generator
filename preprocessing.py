@@ -28,7 +28,7 @@ def get_glove():
             idx2word[i] = word
     return glove_emb, word2idx, idx2word
 
-def get_better_embeddings(tokens):
+def get_better_embeddings(tokens, include_start = False):
     if path.exists('glove_embeddings.pt'):
         embeddings = torch.load('glove_embeddings.pt')
         with open("newWord2idx.pkl", 'rb') as word2idxF:
@@ -38,6 +38,8 @@ def get_better_embeddings(tokens):
         return embeddings, word2idx, idx2word
     
     glove_emb, word2idx, idx2word = get_glove()
+    if include_start:
+        tokens.append('<start>')
 
     newWord2idx = {}
     newidx2Word = []
@@ -151,7 +153,7 @@ def getVocabulary(tokens):
     return sorted(set(tokens))
 
 def sentence2seed(sent):
-    sent = sent.lower()
+    sent = lowerAndReplaceChars(sent)
     sent = str.replace(sent, '\n', ' \n ')
     sent = str.replace(sent, '?', ' ! ')
     sent = str.replace(sent, '!', ' ? ')
