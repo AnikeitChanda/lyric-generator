@@ -149,3 +149,11 @@ def tokenize(df, langdetect=True):
 
 def getVocabulary(tokens):
     return sorted(set(tokens))
+
+def sentence2seed(sent):
+    sent = sent.lower()
+    sent = str.replace(sent, '\n', ' \n ')
+    sent = str.replace(sent, '?', ' ! ')
+    sent = str.replace(sent, '!', ' ? ')
+    tokens = re.findall(r'\S+|\n', sent)
+    return tokens

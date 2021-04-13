@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
+from preprocessing import sentence2seed
 # nltk.download('punkt')
 
 # Revisit if we run into memory issues in colab
@@ -53,9 +54,11 @@ class Simple_LSTM(nn.Module):
         out = self.fc(ht)
         return out
 
-def train_model(dataloader, epoch_count, vocab_size, glove_emb, device):
+def train_model(dataloader, epoch_count, vocab_size, glove_emb, device, weights=None):
     #Change embedding dim and hidden dim
     model = Simple_LSTM(vocab_size,256,glove_emb).to(device)
+    if weights is not None:
+        model.load_state_dict(torch.load(weights))
     optimizer = torch.optim.Adam(model.parameters(), lr = 0.002)
     
     avg_losses_f = []
@@ -107,14 +110,19 @@ def sample(preds, temperature=1.0):
     probas = np.random.multinomial(1, preds, 1)
     return np.argmax(probas)
 
-
 def test(model, idx2word, word2idx, seq_length, device):
     model.eval()
-    sentence = ["my", "mom", "said", "to", "never", "\n", "look", "a", "gift", "horse", "in", "the", "mouth", "\n", "gang", "gang"]
+    sentence = """
+This shit sounds like what being rich feels like
+You underestimated greatly
+Most number ones ever how long did it really take me
+The part I love most is poop pee poop
+"""
+    seed = sentence2seed(sentence)
     generated = []
-    original = sentence
-    window = sentence
-    variance = 0.5
+    original = seed
+    window = seed[-seq_length:]
+    variance = 0.9
     for i in range(400):
         x = np.zeros((1, seq_length))   
         for t, word in enumerate(window):
