@@ -110,7 +110,7 @@ def sample(preds, temperature=1.0):
     probas = np.random.multinomial(1, preds, 1)
     return np.argmax(probas)
 
-def test(model, idx2word, word2idx, seq_length, device):
+def test(model, idx2word, word2idx, seq_length, sentence, device):
     model.eval()
     sentence = """
 This shit sounds like what being rich feels like
