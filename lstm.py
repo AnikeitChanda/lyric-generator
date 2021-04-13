@@ -112,12 +112,6 @@ def sample(preds, temperature=1.0):
 
 def test(model, idx2word, word2idx, seq_length, sentence, device):
     model.eval()
-    sentence = """
-This shit sounds like what being rich feels like
-You underestimated greatly
-Most number ones ever how long did it really take me
-The part I love most is poop pee poop
-"""
     seed = sentence2seed(sentence)
     generated = []
     original = seed
