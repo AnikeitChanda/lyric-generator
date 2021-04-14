@@ -16,11 +16,17 @@ from preprocessing import sentence2seed, tokenize, get_better_embeddings
 import random
 from torch import optim
 
+if torch.cuda.is_available():
+    device = torch.device("cuda:0")  # you can continue going on here, like cuda:1 cuda:2....etc. 
+    print("Running on the GPU")
+else:
+    device = torch.device("cpu")
+    print("Running on the CPU")
 
-def getKeywords(str):
+def getKeywords(str, numWords):
     r = Rake(min_length=1, max_length=1) # Only get single word phrases
     r.extract_keywords_from_sentences([str])
-    return r.get_ranked_phrases()[:5]
+    return r.get_ranked_phrases()[:numWords]
 
 class SeedGeneratorEncoder(nn.Module):
     def __init__(self, embedding_dim, hidden_dim):
@@ -58,10 +64,10 @@ class SeedGenerator(nn.Module):
     
     def forward(self, keyword_indices, seq_indices, true_values, teacher_force_ratio = 0.5):
         # seq will be a single keyword
-        embedded = self.embeddings(keyword_indices.t()) # embed keyword
+        embedded = self.embeddings(keyword_indices.T) # embed keyword
         encoder_hidden = self.encoder(embedded)
         batchsize = keyword_indices.shape[0]
-        outputs = torch.zeros(self.seq_length + 1, batchsize, self.vocab_size)
+        outputs = torch.zeros(self.seq_length + 1, batchsize, self.vocab_size).to(device)
         # outputs[0] = seq_indices
         count = 0
         tokenEmbeddings = self.embeddings(seq_indices)
@@ -78,23 +84,14 @@ class SeedGenerator(nn.Module):
 
 
 class SeedDataSet(Dataset):
-    def __init__(self, df, word2idx, seq_len):
-        self.df = df["lyrics"]
-        self.word2idx = word2idx
-        self.seq_length = seq_len
+    def __init__(self, processedData):
+        self.processedData = processedData
     
     def __len__(self):
-        return self.df.shape[0]
+        return len(self.processedData)
     
     def __getitem__(self, idx):
-        lyrics = self.df.iloc[idx]
-        tokens = sentence2seed(lyrics)
-
-        keywords = getKeywords(" ".join(tokens))
-        seed = ["<start>"] + tokens[:self.seq_length]
-        keywordIndices = [self.word2idx[word] for word in keywords]
-        seedIndices = [self.word2idx[word] for word in seed]
-        return torch.tensor(keywordIndices), torch.tensor(seedIndices)
+    	return self.processedData[idx]
 
 def train(dataloader, model, num_epochs, criterion, optimizer, fill_value):
     model.train()
@@ -102,7 +99,9 @@ def train(dataloader, model, num_epochs, criterion, optimizer, fill_value):
         for i, (X, y) in enumerate(dataloader):
             optimizer.zero_grad()
             batch_size = X.shape[0]
-            startIndices = torch.full((1, batch_size), fill_value)
+            X = X.to(device)
+            y = y.to(device)
+            startIndices = torch.full((1, batch_size), fill_value).to(device)
             out_seq = model(X, startIndices, y)
             out_dim = out_seq.shape[-1]
             out_seq = out_seq[1:].view(-1, out_dim)
@@ -111,19 +110,71 @@ def train(dataloader, model, num_epochs, criterion, optimizer, fill_value):
             loss.backward()
             # need to add gradient clipping here or no??
             optimizer.step()
+        print(f"Epoch {epoch} Complete")
 
+def sample(preds, temperature=1.0):
+    preds = np.asarray(preds).astype('float64')
+    preds = np.log(preds) / temperature
+    exp_preds = np.exp(preds)
+    preds = exp_preds / np.sum(exp_preds)
+    probas = np.random.multinomial(1, preds, 1)
+    return np.argmax(probas)
+
+def processLyrics(df, word2idx, seqLen, numKeywords):
+    data = []
+    for lyric in df.array:
+        tokens = sentence2seed(lyric)
+        keywords = getKeywords(" ".join(tokens), numKeywords)
+        if len(keywords) != numKeywords:
+        	continue
+        seed = ["<start>"] + tokens[:seqLen]
+        if len(seed) != seqLen + 1:
+            continue
+        try:
+        	keywordIndices = [word2idx[word] for word in keywords]
+        	seedIndices = [word2idx[word] for word in seed]
+        	data.append((torch.tensor(keywordIndices), torch.tensor(seedIndices)))
+        except KeyError:
+        	pass
+    return data
+
+def generate(model, keywords, word2idx, idx2word):
+    model.eval()
+    generated = []
+    keywordIndices = [word2idx[word] for word in keywords]
+    keywordTensor = torch.tensor(keywordIndices).view(1, -1).to(device)
+    startIndices = torch.full((1, 1), word2idx["<start>"]).to(device)
+    out_seq = model(keywordTensor, startIndices, None, teacher_force_ratio=0.0) # torch.Size([17, 1, 113432])
+    out_seq = out_seq[1:] # torch.Size([16, 1, 113432])
+    out_seq = out_seq.squeeze(1).cpu() # torch.Size([16, 113432])
+    for rowIndex in range(out_seq.shape[0]):
+        row = out_seq[rowIndex]
+        pred = np.array(F.softmax(row))
+        bestIndex = sample(pred)
+        generated.append(idx2word[bestIndex])
+    print(generated)
+    
    
 def main():
     df = pd.read_csv("cleaned_lyrics_new.csv")
+    NUMKEYWORDS = 5
+    SEQLEN = 16
     tokens = tokenize(df, langdetect=False)
     embeddings, word2idx, idx2word = get_better_embeddings(tokens, True)
-    df = df.sample(100, random_state=25)
-    trainDataset = SeedDataSet(df, word2idx, 16)
-    dataloader = DataLoader(trainDataset, batch_size=32)
-    model = SeedGenerator(len(idx2word), 100, embeddings, 16)
+    df = df.sample(48193//3, random_state=100)
+    processedData = processLyrics(df["lyrics"], word2idx, SEQLEN, NUMKEYWORDS)
+    print(f"Processed Lyrics: {len(processedData)}")
+    trainDataset = SeedDataSet(processedData)
+    dataloader = DataLoader(trainDataset, batch_size=128)
+    model = SeedGenerator(len(idx2word), 100, embeddings, SEQLEN).to(device)
     optimizer = optim.Adam(model.parameters())
     criterion = nn.CrossEntropyLoss()
-    train(dataloader, model, 1, criterion, optimizer, word2idx["<start>"])
+    train(dataloader, model, 2, criterion, optimizer, word2idx["<start>"])
+    keywords = ["young", "love", "fun", "happy", "world"]
+    assert len(keywords) == NUMKEYWORDS
+    with torch.no_grad():
+        generate(model, keywords, word2idx, idx2word)
+        print(idx2word)
 
 if __name__ == "__main__":
     main()
