@@ -15,6 +15,7 @@ from torch.autograd import Variable
 from preprocessing import sentence2seed, tokenize, get_better_embeddings
 import random
 from torch import optim
+from nltk.translate.bleu_score import sentence_bleu
 
 if torch.cuda.is_available():
     device = torch.device("cuda:0")  # you can continue going on here, like cuda:1 cuda:2....etc. 
@@ -138,11 +139,10 @@ def processLyrics(df, word2idx, seqLen, numKeywords):
         	pass
     return data
 
-def generate(model, keywords, word2idx, idx2word):
+def generateWithTensor(model, keywordTensor, word2idx, idx2word):
     model.eval()
     generated = []
-    keywordIndices = [word2idx[word] for word in keywords]
-    keywordTensor = torch.tensor(keywordIndices).view(1, -1).to(device)
+    keywordTensor = keywordTensor.view(1, -1).to(device)
     startIndices = torch.full((1, 1), word2idx["<start>"]).to(device)
     out_seq = model(keywordTensor, startIndices, None, teacher_force_ratio=0.0) # torch.Size([17, 1, 113432])
     out_seq = out_seq[1:] # torch.Size([16, 1, 113432])
@@ -154,15 +154,32 @@ def generate(model, keywords, word2idx, idx2word):
         generated.append(idx2word[bestIndex])
 
     print(" ".join(generated))
+    return generated
+
+def generate(model, keywords, word2idx, idx2word):
+    keywordIndices = [word2idx[word] for word in keywords]
+    keywordTensor = torch.tensor(keywordIndices)
+    generateWithTensor(model, keywordTensor, word2idx, idx2word)
     
-   
+
+def eval(processedData, model, word2idx, idx2word):
+    random.seed(488)
+    scores = []
+    testData = random.sample(processedData, 10)
+    for val in testData:
+        result = generateWithTensor(model, val[0], word2idx, idx2word)
+        trueData = [idx2word[a.item()] for a in val[1]][1:]
+        bleuScore = sentence_bleu([result], trueData, weights = (0.3, 0.5, 0.15, 0.05))
+        scores.append(bleuScore)
+    print(f"Average BLEU Score: {sum(scores) / len(scores)}")
+
 def main():
     df = pd.read_csv("cleaned_lyrics_new.csv")
     NUMKEYWORDS = 3
     SEQLEN = 60
     tokens = tokenize(df, langdetect=False)
     embeddings, word2idx, idx2word = get_better_embeddings(tokens, True)
-    #df = df.sample(48193//3, random_state=100)
+    df = df.sample(11, random_state=100)
     processedData = processLyrics(df["lyrics"], word2idx, SEQLEN, NUMKEYWORDS)
     print(f"Processed Lyrics: {len(processedData)}")
     trainDataset = SeedDataSet(processedData)
@@ -170,13 +187,14 @@ def main():
     model = SeedGenerator(len(idx2word), 100, embeddings, SEQLEN).to(device)
     optimizer = optim.Adam(model.parameters())
     criterion = nn.CrossEntropyLoss()
-    train(dataloader, model, 5, criterion, optimizer, word2idx["<start>"])
+    train(dataloader, model, 1, criterion, optimizer, word2idx["<start>"])
     torch.save(model.state_dict(), 'all_data_keyword_newmodel.pth')
     model.load_state_dict(torch.load('all_data_keyword_newmodel.pth'))
     keywords = ["work", "life", "sad"]
     assert len(keywords) == NUMKEYWORDS
     with torch.no_grad():
         generate(model, keywords, word2idx, idx2word)
+        eval(processedData, model, word2idx, idx2word)
 
 if __name__ == "__main__":
     main()
