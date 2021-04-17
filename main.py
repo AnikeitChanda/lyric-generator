@@ -14,11 +14,17 @@ def main(seq_length, step, epochs, weights=None, outputPath=None, evalOnly=False
     genius_df = pd.read_csv('cleaned_lyrics_new.csv')
     tokens = tokenize(genius_df, langdetect=False)
     embeddings, word2idx, idx2word = get_better_embeddings(tokens)
-    # # genius_df = genius_df.loc[genius_df['genre'] == 'pop']
-    # tokens = tokenize(genius_df, langdetect=False) # list of tokens representing song lyrics tokens
+    genius_df = genius_df.loc[genius_df['genre'] == 'pop']
+    tokens = tokenize(genius_df, langdetect=False) # list of tokens representing song lyrics tokens
     vocab = getVocabulary(tokens)
+
+    trained_model = Simple_LSTM(len(idx2word),256,embeddings).to(device)
+    trained_model.load_state_dict(torch.load('16_1_5.pth'))
+    seedSentence = " ".join(['i', 'looked', 'now', 'doo', 'quick', 'get', 'call', 'if', 'just', 'when', 'oh', 'i', 'what', '\n', 'when', "couldn't"])
+    test(trained_model, idx2word, word2idx, seq_length, seedSentence, device)
+
     if outputPath is None:
-      outputPath = f"{seq_length}_{step}_{epoch}.pth"
+      outputPath = f"{seq_length}_{step}_{epochs}.pth"
     # Train
     if not evalOnly:
       dataloader = make_dataloaders(tokens, seq_length, step, word2idx, 256)
@@ -32,20 +38,13 @@ def main(seq_length, step, epochs, weights=None, outputPath=None, evalOnly=False
       if weigths is None:
         print("Provide weights using --weights")
         return
-      train_model.load_state_dict(torch.load(weights))
+      trained_model.load_state_dict(torch.load(weights))
 
-    seedSentence = """
-This shit sounds like what being rich feels like
-You underestimated greatly
-Most number ones ever how long did it really take me
-The part I love most is poop pee poop
-"""
-
-    test(trained_model, idx2word, word2idx, seedSentence, seq_length=seq_length, device=device)
+    #test(trained_model, idx2word, word2idx, seedSentence, seq_length, device)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    default_epochs = 10
+    default_epochs = 5
     default_sequence_length = 16
     default_step_length = 1
     parser.add_argument("-e", "--epochs", default=default_epochs, type=int)

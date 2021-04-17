@@ -152,29 +152,31 @@ def generate(model, keywords, word2idx, idx2word):
         pred = np.array(F.softmax(row))
         bestIndex = sample(pred)
         generated.append(idx2word[bestIndex])
-    print(generated)
+
+    print(" ".join(generated))
     
    
 def main():
     df = pd.read_csv("cleaned_lyrics_new.csv")
-    NUMKEYWORDS = 5
-    SEQLEN = 16
+    NUMKEYWORDS = 3
+    SEQLEN = 60
     tokens = tokenize(df, langdetect=False)
     embeddings, word2idx, idx2word = get_better_embeddings(tokens, True)
-    df = df.sample(48193//3, random_state=100)
+    #df = df.sample(48193//3, random_state=100)
     processedData = processLyrics(df["lyrics"], word2idx, SEQLEN, NUMKEYWORDS)
     print(f"Processed Lyrics: {len(processedData)}")
     trainDataset = SeedDataSet(processedData)
-    dataloader = DataLoader(trainDataset, batch_size=128)
+    dataloader = DataLoader(trainDataset, batch_size=32)
     model = SeedGenerator(len(idx2word), 100, embeddings, SEQLEN).to(device)
     optimizer = optim.Adam(model.parameters())
     criterion = nn.CrossEntropyLoss()
-    train(dataloader, model, 2, criterion, optimizer, word2idx["<start>"])
-    keywords = ["young", "love", "fun", "happy", "world"]
+    train(dataloader, model, 5, criterion, optimizer, word2idx["<start>"])
+    torch.save(model.state_dict(), 'all_data_keyword_newmodel.pth')
+    model.load_state_dict(torch.load('all_data_keyword_newmodel.pth'))
+    keywords = ["work", "life", "sad"]
     assert len(keywords) == NUMKEYWORDS
     with torch.no_grad():
         generate(model, keywords, word2idx, idx2word)
-        print(idx2word)
 
 if __name__ == "__main__":
     main()

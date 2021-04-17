@@ -64,7 +64,7 @@ def train_model(dataloader, epoch_count, vocab_size, glove_emb, device, weights=
     avg_losses_f = []
 
     for epoch in range(epoch_count):
-        print("Epoch: ", epoch)
+        print("Epoch: ", epoch + 1)
         start_time = time.time()
         model.train()
         loss_fn = torch.nn.CrossEntropyLoss()
@@ -102,7 +102,7 @@ def train_model(dataloader, epoch_count, vocab_size, glove_emb, device, weights=
 
 
 
-def sample(preds, temperature=1.0):
+def sample(preds, temperature=0.7):
     preds = np.asarray(preds).astype('float64')
     preds = np.log(preds) / temperature
     exp_preds = np.exp(preds)
