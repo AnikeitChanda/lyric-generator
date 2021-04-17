@@ -110,6 +110,28 @@ def sample(preds, temperature=0.7):
     probas = np.random.multinomial(1, preds, 1)
     return np.argmax(probas)
 
+def generate(model, idx2word, word2idx, seq_length, seed, device):
+	model.eval()
+	generated = []
+	original = seed
+	window = seed[:seq_length]
+	variance = 0.9
+	for i in range(400):
+		x = np.zeros((1, seq_length))
+		for t, word in enumerate(window):
+			x[0,t] = word2idx[word]
+		x_in = Variable(torch.LongTensor(x))
+		x_in = x_in.to(device)
+		pred = model(x_in)
+		pred = np.array(F.softmax(pred, dim=1).data[0].cpu())
+		next_index = sample(pred, variance)
+		next_word = idx2word[next_index] # index to word
+
+		generated = generated + [next_word]
+		window = window[1:] + [next_word] # Update Window for next char predict
+	return generated
+
+
 def test(model, idx2word, word2idx, seq_length, sentence, device):
     model.eval()
     seed = sentence2seed(sentence)
