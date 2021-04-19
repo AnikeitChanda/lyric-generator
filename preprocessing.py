@@ -149,6 +149,11 @@ def tokenize(df, langdetect=True):
     cleaned_df = clean_up(df, langdetect=langdetect)
     return get_tokenized_lyrics(cleaned_df)
 
+def tokenize_lm(df, genre, langdetect=True):
+    cleaned_df = clean_up(df, langdetect=langdetect)
+    cleaned_df = cleaned_df.loc[cleaned_df['genre'] == genre, 'lyrics'].to_frame()
+    return get_tokenized_lyrics(cleaned_df)
+
 def getVocabulary(tokens):
     return sorted(set(tokens))
 
