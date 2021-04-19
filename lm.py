@@ -1,18 +1,18 @@
 import os
-from preprocessing import tokenize_lm
+from preprocessing import tokenize_lm, sentence2seed
 import pandas as pd
 import nltk
 from nltk.util import everygrams
 from nltk.lm.preprocessing import pad_both_ends
 from collections import Counter
 import random
-
+from nltk.translate.bleu_score import sentence_bleu
 
 
 def load_data(train_path, genre):
     genius_df = pd.read_csv(train_path)
     tokens = tokenize_lm(genius_df, genre, langdetect=False)
-    return tokens
+    return tokens, genius_df
 
 
 class LM():
@@ -100,20 +100,25 @@ class LM():
         return unigram_model, bigram_model, trigram_model
 
 
-    def generate_lyrics(self, start):
+    def train_model(self):
         self.make_counts()
-        unigram_model, bigram_model, trigram_model = self.create_interpolation_model()
-        sentence = start
-        model_inp = start.split()
+        self.unigram_model, self.bigram_model, self.trigram_model = self.create_interpolation_model()
+
+    def generate_lyrics(self, start):
+        # self.make_counts()
+        # unigram_model, bigram_model, trigram_model = self.create_interpolation_model()
+        # sentence = start
+        # model_inp = start.split()
+        model_inp = start
         count = 0
         new_word = ""
-        while count < 40 and new_word != '</s>':
-            if (model_inp[len(model_inp)-2], model_inp[len(model_inp)-1]) in trigram_model.keys():
-                trigram_options = trigram_model[(model_inp[len(model_inp)-2], model_inp[len(model_inp)-1])]
+        while count < 384 and new_word != '</s>':
+            if (model_inp[len(model_inp)-2], model_inp[len(model_inp)-1]) in self.trigram_model.keys():
+                trigram_options = self.trigram_model[(model_inp[len(model_inp)-2], model_inp[len(model_inp)-1])]
             else:
                 trigram_options = {}
-            if model_inp[len(model_inp)-1] in bigram_model.keys():
-                bigram_options  = bigram_model[model_inp[len(model_inp)-1]]
+            if model_inp[len(model_inp)-1] in self.bigram_model.keys():
+                bigram_options  = self.bigram_model[model_inp[len(model_inp)-1]]
             else:
                 bigram_options = {}
 
@@ -124,7 +129,7 @@ class LM():
                 else:
                     options_dic[k] = v
 
-            top_k = Counter(unigram_model)
+            top_k = Counter(self.unigram_model)
             unigram_options = top_k.most_common(40)
             for k, v in unigram_options:
                 if k[0] in options_dic.keys():
@@ -141,20 +146,39 @@ class LM():
             else:
                 rand_idx = random.randint(0, len(sorted_options) - 1)
             new_word = sorted_options[rand_idx][0]
-            sentence = sentence + " " + new_word
+            # sentence = sentence + " " + new_word
             model_inp.append(new_word)
             count += 1
-        return sentence
+        # return sentence, model_inp
+        return model_inp
 
+
+def eval(model, df, windowSize):
+    n_songs = list(df["lyrics"].sample(10, random_state=10))
+    scores = []
+    for song in n_songs:
+        tokens = sentence2seed(song)
+        seed = tokens[:windowSize]
+        generatedLyrics = model.generate_lyrics(seed) # size 400
+        trueLyrics = tokens[windowSize:]
+        trueLyrics = trueLyrics[:400]
+        score = sentence_bleu([generatedLyrics], trueLyrics)
+        scores.append(score)
+    print(f"Average Bleu Score: {sum(scores)/len(scores)}")
 
 
 
 def main():
     data_path = 'cleaned_lyrics_new.csv'
-    train_tokens = load_data(data_path, 'rock')
+    genre = 'pop'
+    train_tokens, df = load_data(data_path, genre)
     lm = LM(train_tokens, 0.1)
-    out = lm.generate_lyrics('on god i love the pussy, on god i love the blow')
-    print(out)
+    lm.train_model()
+    # out, tokens = lm.generate_lyrics('on god i love the pussy, on god i love the blow')
+    # print(out, len(tokens))
+    df = df.loc[df['genre'] == genre, 'lyrics'].to_frame()
+    eval(lm, df, 16)
+
 
 
 
